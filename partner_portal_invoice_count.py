@@ -397,12 +397,6 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
     summary_collection.insert_one(data_to_insert)
     print("✅ Report inserted successfully into DB")
 
-    db_invoice_count = total_files
-    folder_invoice_count = downloaded_file_count
-    time_per_invoice_db = round(time_per_invoice, 2)
-    time_per_invoice_actual = actual_time_per_invoice
-    diff_count = invoice_diff
-
     if invoice_diff == 0:
         print("🟩 Invoice count matches exactly between DB and downloaded folder.")
     elif invoice_diff > 0:
