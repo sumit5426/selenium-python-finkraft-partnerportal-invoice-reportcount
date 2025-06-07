@@ -1,4 +1,5 @@
-name: Selenium InvoiceCount Tests
+name: Selenium Invoice Report Count Tests
+
 env:
   LOGIN_USERNAME: ${{ secrets.LOGIN_USERNAME }}
   LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
@@ -38,19 +39,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
 
-      - name: Remove existing ChromeDriver (ignore if missing)
-        run: sudo rm -f /usr/local/bin/chromedriver
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
       - name: Install matching ChromeDriver version
         run: |
-          echo "Downloading latest ChromeDriver..."
-          LATEST=$(curl -s https://chromedriver.storage.googleapis.com/LATEST_RELEASE)
-          echo "Latest version: $LATEST"
-          wget -q "https://chromedriver.storage.googleapis.com/${LATEST}/chromedriver_linux64.zip"
+          echo "Fetching installed Chrome version..."
+          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f1)
+          echo "Detected Chrome major version: $CHROME_VERSION"
+
+          echo "Getting matching ChromeDriver version..."
+          CHROMEDRIVER_URL=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | \
+            jq -r --arg VER "$CHROME_VERSION" '.channels.Stable.versions[] | select(.version | startswith($VER + ".")) | .downloads.chromeDriver[] | select(.platform == "linux64") | .url' | head -n 1)
+
+          if [ -z "$CHROMEDRIVER_URL" ]; then
+            echo "❌ Failed to find ChromeDriver for Chrome $CHROME_VERSION"
+            exit 1
+          fi
+
+          echo "✅ Downloading ChromeDriver from $CHROMEDRIVER_URL"
+          wget -q "$CHROMEDRIVER_URL" -O chromedriver_linux64.zip
           unzip chromedriver_linux64.zip
-          sudo mv chromedriver /usr/local/bin/chromedriver
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
           sudo chmod +x /usr/local/bin/chromedriver
-          
 
       - name: Set timezone to Asia/Kolkata
         run: sudo timedatectl set-timezone Asia/Kolkata
