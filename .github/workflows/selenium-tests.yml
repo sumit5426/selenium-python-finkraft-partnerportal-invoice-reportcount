@@ -1,5 +1,4 @@
 name: Selenium InvoiceCount Tests
-
 env:
   LOGIN_USERNAME: ${{ secrets.LOGIN_USERNAME }}
   LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
@@ -39,8 +38,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
+      - name: Remove existing ChromeDriver (ignore if missing)
+        run: sudo rm -f /usr/local/bin/chromedriver
 
       - name: Install matching ChromeDriver version
         run: |
@@ -53,8 +52,8 @@ jobs:
             jq -r --arg VER "$CHROME_VERSION" '.channels.Stable.versions[] | select(.version | startswith($VER + ".")) | .downloads.chromeDriver[] | select(.platform == "linux64") | .url' | head -n 1)
 
           if [ -z "$CHROMEDRIVER_URL" ]; then
-            echo "❌ ChromeDriver not found in JSON. Trying fallback..."
-            CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
+            echo "❌ ChromeDriver not found in JSON. Using latest stable ChromeDriver version as fallback..."
+            CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE")
             CHROMEDRIVER_URL="https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
           fi
 
@@ -70,8 +69,4 @@ jobs:
       - name: Run partner_portal_invoice_count
         run: python partner_portal_invoice_count.py
 
-      - name: Run reportcount
-        run: python reportcount.py
-
-      - name: Run send
-        run: python send.py
+      - name: Run reportcou
