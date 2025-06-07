@@ -1,0 +1,11 @@
+selenium>=4.0.0
+selenium-wire>=4.6.0
+pymongo>=4.0.0
+blinker==1.6.2
+python-dotenv~=1.1.0
+psycopg2-binary~=2.9.10
+fastapi
+uvicorn
+sendgrid
+pandas
+openpyxl

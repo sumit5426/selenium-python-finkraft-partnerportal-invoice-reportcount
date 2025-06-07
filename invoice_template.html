@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice Download Report</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f9f9f9;
+      padding: 30px;
+      color: #333;
+    }
+    h2 {
+      color: #2c502e;
+      border-bottom: 2px solid #2c502e;
+      padding-bottom: 5px;
+    }
+    h3 {
+      margin-top: 40px;
+      color: #34495e;
+    }
+    table {
+      border-collapse: collapse;
+      width: 90%;
+      margin: 20px 0;
+      background-color: #fff;
+      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th {
+      background-color: #2c502e;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: left;
+      padding: 14px 16px;
+    }
+    td {
+      padding: 12px 16px;
+      font-size: 15px;
+    }
+    tr:nth-child(even) {
+      background-color: #f5f8fa;
+    }
+    tr:hover {
+      background-color: #eef2f5;
+    }
+    .pass {
+      color: #2ecc71;
+      font-weight: bold;
+    }
+    .fail {
+      color: #e74c3c;
+      font-weight: bold;
+    }
+    .info {
+      color: #3498db;
+      font-weight: bold;
+    }
+    td span {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>🧾 Invoice Download Validation Report</h2>
+
+  <h3>📊 Invoice Counts</h3>
+  <table>
+    <tr>
+      <th>Source</th>
+      <th>Count</th>
+      <th>Remarks</th>
+    </tr>
+    <tr>
+      <td>Database</td>
+      <td>{{ db_invoice_count }}</td>
+      <td>✅ Retrieved from backend</td>
+    </tr>
+    <tr>
+      <td>Downloaded PDFs</td>
+      <td>{{ folder_invoice_count }}</td>
+      <td>📁 Files in download folder</td>
+    </tr>
+    <tr>
+      <td>Difference (DB - Folder)</td>
+      <td>{{ diff_count }}</td>
+      <td>
+        {% if diff_count == 0 %}
+          <span class="pass">✅ All files downloaded</span>
+        {% else %}
+          <span class="fail">❌ {{ diff_count }} file(s) missing</span>
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <h3>⏱️ Time Metrics</h3>
+  <table>
+    <tr>
+      <th>Metric</th>
+      <th>Time (seconds)</th>
+      <th>Status</th>
+    </tr>
+    <tr>
+      <td>Time per Invoice (DB)</td>
+      <td>{{ time_per_invoice_db }}</td>
+      <td>
+        {% if time_per_invoice_db <= 2 %}
+          <span class="pass">✅ Efficient</span>
+        {% else %}
+          <span class="fail">❌ Slow</span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+  <td>Time per Invoice (Actual)</td>
+  <td>{{ time_per_invoice_actual_str }}</td>  <!-- display as string -->
+  <td>
+    {% if time_per_invoice_actual <= 2 %}
+      <span class="pass">✅ Efficient</span>
+    {% else %}
+      <span class="fail">❌ Slow</span>
+    {% endif %}
+  </td>
+</tr>
+
+    <tr>
+      <td>Total Download Time</td>
+      <td>{{ total_time }}</td>
+      <td><span class="info">ℹ️ Full download duration</span></td>
+    </tr>
+  </table>
+
+</body>
+</html>

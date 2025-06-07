@@ -1,0 +1,62 @@
+name: Selenium InvoiceCount Tests
+env:
+  LOGIN_USERNAME: ${{ secrets.LOGIN_USERNAME }}
+  LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
+  MONGO_DB_USERNAME: ${{ secrets.MONGO_DB_USERNAME }}
+  MONGO_DB_PASSWORD: ${{ secrets.MONGO_DB_PASSWORD }}
+  PG_DB_USERNAME: ${{ secrets.PG_DB_USERNAME }}
+  PG_DB_PASSWORD: ${{ secrets.PG_DB_PASSWORD }}
+  TEMPLATE_ID: ${{ secrets.TEMPLATE_ID }}
+  SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # Runs every day at 2 AM UTC
+  workflow_dispatch:  # Manual trigger option
+
+jobs:
+  selenium-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Remove existing ChromeDriver (ignore if missing)
+        run: sudo rm -f /usr/local/bin/chromedriver
+
+      - name: Install matching ChromeDriver version
+        run: |
+          wget -q https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/135.0.7049.114/linux64/chromedriver-linux64.zip
+          unzip chromedriver-linux64.zip
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
+
+      - name: Set timezone to Asia/Kolkata
+        run: sudo timedatectl set-timezone Asia/Kolkata
+
+      - name: Run partner_portal_invoice_count
+        run: python partner_portal_invoice_count.py
+
+      - name: Run reportcount
+        run: python reportcount.py
+
+      - name: Run send
+        run: python send.py
