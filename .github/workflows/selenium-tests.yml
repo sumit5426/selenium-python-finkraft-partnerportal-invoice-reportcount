@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -43,24 +44,9 @@ jobs:
 
       - name: Install matching ChromeDriver version
         run: |
-          echo "Fetching installed Chrome version..."
-          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f1)
-          echo "Detected Chrome major version: $CHROME_VERSION"
-
-          echo "Trying to fetch ChromeDriver from JSON..."
-          CHROMEDRIVER_URL=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | \
-            jq -r --arg VER "$CHROME_VERSION" '.channels.Stable.versions[] | select(.version | startswith($VER + ".")) | .downloads.chromeDriver[] | select(.platform == "linux64") | .url' | head -n 1)
-
-          if [ -z "$CHROMEDRIVER_URL" ]; then
-            echo "❌ ChromeDriver not found in JSON. Using latest stable ChromeDriver version as fallback..."
-            CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE")
-            CHROMEDRIVER_URL="https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
-          fi
-
-          echo "✅ Downloading ChromeDriver from $CHROMEDRIVER_URL"
-          wget -q "$CHROMEDRIVER_URL" -O chromedriver_linux64.zip
-          unzip chromedriver_linux64.zip
-          sudo mv chromedriver /usr/local/bin/chromedriver
+          wget -q https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/135.0.7049.114/linux64/chromedriver-linux64.zip
+          unzip chromedriver-linux64.zip
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
 
       - name: Set timezone to Asia/Kolkata
@@ -69,4 +55,8 @@ jobs:
       - name: Run partner_portal_invoice_count
         run: python partner_portal_invoice_count.py
 
-      - name: Run reportcou
+      - name: Run reportcount
+        run: python reportcount.py
+
+      - name: Run send
+        run: python send.py
