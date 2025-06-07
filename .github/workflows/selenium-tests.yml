@@ -1,4 +1,4 @@
-name: Selenium Invoice Report Count Tests
+name: Selenium InvoiceCount Tests
 
 env:
   LOGIN_USERNAME: ${{ secrets.LOGIN_USERNAME }}
@@ -48,19 +48,20 @@ jobs:
           CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f1)
           echo "Detected Chrome major version: $CHROME_VERSION"
 
-          echo "Getting matching ChromeDriver version..."
+          echo "Trying to fetch ChromeDriver from JSON..."
           CHROMEDRIVER_URL=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | \
             jq -r --arg VER "$CHROME_VERSION" '.channels.Stable.versions[] | select(.version | startswith($VER + ".")) | .downloads.chromeDriver[] | select(.platform == "linux64") | .url' | head -n 1)
 
           if [ -z "$CHROMEDRIVER_URL" ]; then
-            echo "❌ Failed to find ChromeDriver for Chrome $CHROME_VERSION"
-            exit 1
+            echo "❌ ChromeDriver not found in JSON. Trying fallback..."
+            CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
+            CHROMEDRIVER_URL="https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
           fi
 
           echo "✅ Downloading ChromeDriver from $CHROMEDRIVER_URL"
           wget -q "$CHROMEDRIVER_URL" -O chromedriver_linux64.zip
           unzip chromedriver_linux64.zip
-          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
+          sudo mv chromedriver /usr/local/bin/chromedriver
           sudo chmod +x /usr/local/bin/chromedriver
 
       - name: Set timezone to Asia/Kolkata
