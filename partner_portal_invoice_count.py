@@ -403,22 +403,6 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
     time_per_invoice_actual = actual_time_per_invoice
     diff_count = invoice_diff
 
-    env = Environment(loader=FileSystemLoader('test'))
-    template = env.get_template("invoice_template.html")
-    output = template.render(
-        db_invoice_count=db_invoice_count,
-        folder_invoice_count=folder_invoice_count,
-        diff_count=diff_count,
-        time_per_invoice_db=time_per_invoice_db,
-        time_per_invoice_actual=time_per_invoice_actual,
-        time_per_invoice_actual_str=f"{time_per_invoice_actual:.2f}",
-        total_time=f"{total_time:.2f}"
-    )
-    report_path = "invoice_validation_report.html"
-    with open(report_path, "w") as f:
-        f.write(output)
-    print(f"✅ Report generated: {report_path}")
-
     if invoice_diff == 0:
         print("🟩 Invoice count matches exactly between DB and downloaded folder.")
     elif invoice_diff > 0:
