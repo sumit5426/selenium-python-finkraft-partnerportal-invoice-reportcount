@@ -43,30 +43,14 @@ jobs:
 
       - name: Install matching ChromeDriver version
         run: |
-          echo "Fetching Chrome version..."
-          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f1)
-          echo "Detected Chrome major version: $CHROME_VERSION"
-
-          if [ -z "$CHROME_VERSION" ]; then
-            echo "❌ Failed to detect Chrome version."
-            exit 1
-          fi
-
-          echo "Fetching matching ChromeDriver version..."
-          CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}")
-
-          if [ -z "$CHROMEDRIVER_VERSION" ]; then
-            echo "❌ Failed to fetch matching ChromeDriver version for Chrome $CHROME_VERSION."
-            exit 1
-          fi
-
-          echo "Downloading ChromeDriver version: $CHROMEDRIVER_VERSION"
-          wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
-
+          echo "Downloading latest ChromeDriver..."
+          LATEST=$(curl -s https://chromedriver.storage.googleapis.com/LATEST_RELEASE)
+          echo "Latest version: $LATEST"
+          wget -q "https://chromedriver.storage.googleapis.com/${LATEST}/chromedriver_linux64.zip"
           unzip chromedriver_linux64.zip
           sudo mv chromedriver /usr/local/bin/chromedriver
           sudo chmod +x /usr/local/bin/chromedriver
-          echo "✅ ChromeDriver $CHROMEDRIVER_VERSION installed successfully"
+          
 
       - name: Set timezone to Asia/Kolkata
         run: sudo timedatectl set-timezone Asia/Kolkata
