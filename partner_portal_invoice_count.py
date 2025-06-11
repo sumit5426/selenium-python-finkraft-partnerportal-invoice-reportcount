@@ -6,10 +6,8 @@ import zipfile
 import shutil
 import glob
 import tempfile
-from datetime import datetime
 import psycopg2
 from psycopg2 import sql
-from jinja2 import Environment, FileSystemLoader
 from pymongo import MongoClient
 from selenium.common.exceptions import ElementClickInterceptedException
 from selenium.webdriver.support.wait import WebDriverWait
@@ -17,7 +15,6 @@ from seleniumwire import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from dotenv import load_dotenv
-from send import trigger_sendgrid_email
 from datetime import datetime
 
 load_dotenv()
@@ -127,7 +124,6 @@ def login_and_select_workspace(driver, uri, workspace_name):
     page_title = driver.title
     print(page_title)
     partner_portal_name = page_title.split("-")[0].strip()
-
     EMAIL_TEXTBOX = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Email']")))
     EMAIL_TEXTBOX.send_keys(email_id)
     SUBMIT_BUTTON = wait.until(EC.element_to_be_clickable((By.XPATH, '//button[@type="submit"]')))
@@ -137,54 +133,79 @@ def login_and_select_workspace(driver, uri, workspace_name):
     wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))).click()
     print("Successfully logged in...")
     time.sleep(2)
-    wait.until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class,'ant-dropdown-trigger')]"))).click()
-    workspace_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//p[normalize-space()='{workspace_name}']")))
-    try:
-        workspace_element.click()
-    except ElementClickInterceptedException:
-        print("Element not clickable directly. Scrolling to it...")
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", workspace_element)
-        time.sleep(1)  # optional delay
-        workspace_element.click()
-
-    driver.find_element(By.XPATH, '(//div[@class="MenuItem "])[2]').click()
-    wait.until(EC.element_to_be_clickable((By.XPATH, '(//div[@class="BulkDownload"])[1]'))).click()
-    try:
-        download_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, '//span[text()="Initiate Download"]'))
-        )
-        download_button.click()
-        ui_alert_shown_flag = True
-        print("Alert shown")
-    except Exception as e:
-        ui_alert_shown_flag = False
-        print("Alert not shown")
-    return ui_alert_shown_flag, partner_portal_name
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        try:
+            workspace_dropdown = wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//div[contains(@class,'ant-dropdown-trigger')]")))
+            workspace_dropdown.click()
+            workspace_element = wait.until(
+                EC.element_to_be_clickable((By.XPATH, f"//p[normalize-space()='{workspace_name}']")))
+            try:
+                workspace_element.click()
+            except ElementClickInterceptedException:
+                print("Element not clickable directly. Scrolling to it...")
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", workspace_element)
+                time.sleep(1)  # Wait for scroll to complete
+                workspace_element.click()
+            time.sleep(1)
+            menu_item = wait.until(EC.element_to_be_clickable((By.XPATH, '(//div[@class="MenuItem "])[2]')))
+            menu_item.click()
+            bulk_download = wait.until(EC.element_to_be_clickable((By.XPATH, '(//div[@class="BulkDownload"])[1]')))
+            bulk_download.click()
+            try:
+                download_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, '//span[text()="Initiate Download"]'))
+                )
+                download_button.click()
+                ui_alert_shown_flag = True
+                print("Alert shown")
+            except Exception as e:
+                ui_alert_shown_flag = False
+                print("Alert not shown")
+            return ui_alert_shown_flag, partner_portal_name
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {str(e)}")
+            if attempt < max_attempts - 1:
+                print("Retrying workspace selection...")
+                driver.refresh()
+                time.sleep(2)
+            else:
+                print("Max attempts reached. Raising the error.")
+                return False, partner_portal_name
+    return False, partner_portal_name
 
 def capture_report_id(driver):
     print("📡 Monitoring network requests to capture the invoice report API response...")
-    timeout = time.time() + 60  # 30 seconds timeout
+    timeout = time.time() + 60  # 60 seconds timeout
     driver.requests.clear()
     report_id = None
+    found_url = None
     while time.time() < timeout:
-        for request in driver.requests:
-            if request.response:
-                if '/report/invoicedownload' in request.url and 'application/json' in request.response.headers.get('Content-Type', ''):
-                    print(f"➡ Found API: {request.url}")
-                    try:
-                        response_body = request.response.body.decode('utf-8')
-                        body_data = json.loads(response_body)
-                        if 'data' in body_data and 'reportId' in body_data['data']:
-                            report_id = body_data['data']['reportId']
-                            print(f"ReportID Extracted successfully from Network tab: {report_id}")
-                            break
-                    except Exception as e:
-                        print(f"⚠ Error parsing JSON: {e}")
+        matching_requests = [
+            req for req in driver.requests
+            if req.response
+               and '/report/invoicedownload' in req.url
+               and 'application/json' in req.response.headers.get('Content-Type', '')
+        ]
+        for request in matching_requests:
+            try:
+                response_body = request.response.body.decode('utf-8', errors='ignore')
+                body_data = json.loads(response_body)
+                if 'data' in body_data and 'reportId' in body_data['data']:
+                    report_id = body_data['data']['reportId']
+                    print(f"ReportID Extracted successfully from Network tab: {report_id}")
+                    found_url = request.url
+                    break
+            except Exception as e:
+                print(f"⚠ Error parsing JSON from {request.url}: {e}")
         if report_id:
+            print(f"➡ Found API: {found_url}")
+            print(f"✅ ReportID Extracted: {report_id}")
             break
         time.sleep(1)
     if not report_id:
-        print("❌ reportId not found in network traffic.")
+        print("❌ reportId not found in network traffic within timeout.")
         return None
     return report_id
 
@@ -293,10 +314,8 @@ def wait_for_report_completion(db, report_id,partner_portal_name,workspace_name,
 
 def download_and_verify_invoices(driver, file_hash, total_files, total_time, formatted_created_at_time, partner_portal_name, workspace_name, ui_alert_shown_flag, db,download_dir,ui_invoice_count):
     if not file_hash:
-        remarks_to_mongo_db(partner_portal_name, workspace_name, db, formatted_created_at_time,
-                            "fileHash not found in MongoDB.")
         print("❌ fileHash not found in MongoDB.")
-        return False
+        return False, "fileHash not found in MongoDB."
     file_hash_flag = True
     print("✅ fileHash is present. Flag:", file_hash_flag)
     download_url = f"https://files.finkraft.ai/invoice-{file_hash}"
@@ -311,10 +330,8 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
         download_btn_2.click()
         print("⬇️ Invoice download links clicked successfully.")
     except Exception as e:
-        remarks_to_mongo_db(partner_portal_name, workspace_name, db, formatted_created_at_time,
-                            "Error clicking download buttons")
         print(f"❌ Error clicking download buttons: {e}")
-        return False
+        return False, f"Error clicking download buttons: {str(e)}"
     timeout = time.time() + 70  # wait up to 70 seconds
     zip_file_path = None
     print("⏳ Waiting for zip file to appear in Downloads...")
@@ -326,10 +343,8 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
             break
         time.sleep(2)
     if not zip_file_path:
-        remarks_to_mongo_db(partner_portal_name, workspace_name, db, formatted_created_at_time,
-                            "Zip file not downloaded.")
         print("❌ Zip file not downloaded.")
-        return False
+        return False, "Zip file not downloaded."
     unique_folder_name = f"invoices_extracted_{uuid.uuid4()}"
     extract_path = os.path.join(download_dir, unique_folder_name)
     os.makedirs(extract_path, exist_ok=True)
@@ -353,10 +368,8 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
     print(f" - 📄 Total PDF invoices extracted from the downloaded zip: {downloaded_file_count}")
 
     if downloaded_file_count == 0:
-        remarks_to_mongo_db(partner_portal_name, workspace_name, db, formatted_created_at_time,
-                            " No PDF files downloaded. Cannot calculate per-invoice time.")
         print("❌ No PDF files downloaded. Cannot calculate per-invoice time.")
-        return False
+        return False, "No PDF files downloaded. Cannot calculate per-invoice time."
     actual_time_per_invoice = total_time / downloaded_file_count
     testStatusAsPerFile = "PASS" if actual_time_per_invoice <= 2 else "FAIL"
     actual_time_per_invoice_db = total_time / total_files
@@ -407,91 +420,111 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
         print("❌ Test Failed: More than 2 seconds per invoice")
     else:
         print("✅ Test Passed: Invoice download time is within limits")
-    return True
+    return True, ""
 
 
 
 def main():
     for portal in portals:
-        connection_string = (f"mongodb://{mongo_db_username}:{mongo_db_password}"
-                             "@mongodb.centralindia.cloudapp.azure.com/admin?"
-                             "directConnection=true&serverSelectionTimeoutMS=5000&appName=mongosh+2.2.3")
-        client = MongoClient(connection_string)
-        db = client['gstservice']
-        print(f"Starting automation for portal:{portal['uri']} and workspace:{portal['workspace_name']}")
-        download_dir = tempfile.mkdtemp(prefix="downloads_")
-        driver = initialize_driver(download_dir)
-        try:
-            ui_alert_shown_flag, partner_portal_name = login_and_select_workspace(
-                driver,
-                portal["uri"],
-                portal["workspace_name"]
-            )
-            report_id = capture_report_id(driver)
-            if report_id is None:
-                # Log error to MongoDB and skip to next portal if report_id is not found
-                current_timestamp = datetime.now().strftime('%Y-%m-%d')
-                remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                    " Report ID not captured.")
-                print("Skipping further processing for this portal due to missing Report ID.")
-                continue
-
-            pg_connection_params = {
-                "host": "postgres.centralindia.cloudapp.azure.com",
-                "port": 5432,
-                "database": "airlines_db",
-                "user": pg_db_username,
-                "password": pg_db_password
-            }
-            table_name = portal['table_name']
-            status_column = portal['status_column_name']
-            status_value = portal['status_column_value']
-            workspace_name = portal['db_workspace_name']
-
-            ui_invoice_count = get_count_from_postgres(
-                pg_connection_params,
-                table_name,
-                status_column,
-                status_value,
-                workspace_name
-            )
-
-            report_info = wait_for_report_completion(db, report_id,partner_portal_name,
-                portal["workspace_name"],ui_invoice_count)
-
-            if report_info is None:
-                continue  #
-
-            download_success=download_and_verify_invoices(
-                driver,
-                report_info["file_hash"],
-                report_info["total_files"],
-                report_info["total_time"],
-                report_info["formatted_created_at_time"],
-                partner_portal_name,
-                portal['workspace_name'],
-                ui_alert_shown_flag,
-                db,download_dir,ui_invoice_count
-            )
-            if download_success is False:
-                continue
-
-        except Exception as e:
-            print(f"⚠️ Error processing portal {portal['uri']}: {e}")
+        retry_count = 0
+        max_retries = 1  # Only retry once
+        while retry_count <= max_retries:
+            connection_string = (f"mongodb://{mongo_db_username}:{mongo_db_password}"
+                                 "@mongodb.centralindia.cloudapp.azure.com/admin?"
+                                 "directConnection=true&serverSelectionTimeoutMS=5000&appName=mongosh+2.2.3")
+            client = MongoClient(connection_string)
+            db = client['gstservice']
+            print(f"Starting automation for portal:{portal['uri']} and workspace:{portal['workspace_name']}")
+            download_dir = tempfile.mkdtemp(prefix="downloads_")
+            driver = initialize_driver(download_dir)
             try:
-                current_timestamp = datetime.now().strftime('%Y-%m-%d')
-                # formatted_created_at_time = datetime.fromtimestamp(created_at).strftime('%Y-%m-%d')
-                subdomain = portal['uri'].split('//')[-1].split('/')[0].replace('.finkraft.ai', '')
-                max_length = 50
-                short_exception = str(e)[:max_length] + ("..." if len(str(e)) > max_length else "")
-                remarks_to_mongo_db(subdomain, portal['workspace_name'], db, current_timestamp,
-                                    f" Exception during processing: {short_exception}")
-            except Exception as log_e:
-                print(f"❌ Error while attempting to log exception to MongoDB: {log_e}")
-        finally:
-            if driver:
-                driver.quit()
+                ui_alert_shown_flag, partner_portal_name = login_and_select_workspace(
+                    driver,
+                    portal["uri"],
+                    portal["workspace_name"]
+                )
 
-        print(f"Completed automation for portal: {portal['uri']}\n\n")
+                if not ui_alert_shown_flag:
+                    print("Workspace selection failed after all retries. Moving to next portal.")
+                    current_timestamp = datetime.now().strftime('%Y-%m-%d')
+                    remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
+                                        "Workspace selection failed after two times retry attempts")
+                    break
+
+                report_id = capture_report_id(driver)
+                if report_id is None:
+                    # Log error to MongoDB and skip to next portal if report_id is not found
+                    current_timestamp = datetime.now().strftime('%Y-%m-%d')
+                    print("Skipping further processing for this portal due to missing Report ID.")
+                    if retry_count == 0:
+                        retry_count += 1
+                        continue
+                    remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
+                                        " Report ID not captured.")
+                    break
+
+                pg_connection_params = {
+                    "host": "postgres.centralindia.cloudapp.azure.com",
+                    "port": 5432,
+                    "database": "airlines_db",
+                    "user": pg_db_username,
+                    "password": pg_db_password
+                }
+                table_name = portal['table_name']
+                status_column = portal['status_column_name']
+                status_value = portal['status_column_value']
+                workspace_name = portal['db_workspace_name']
+
+                ui_invoice_count = get_count_from_postgres(
+                    pg_connection_params,
+                    table_name,
+                    status_column,
+                    status_value,
+                    workspace_name
+                )
+                report_info = wait_for_report_completion(db, report_id, partner_portal_name,
+                                                         portal["workspace_name"], ui_invoice_count)
+
+                if report_info is None:
+                    break
+                download_success,error_message = download_and_verify_invoices(
+                    driver,
+                    report_info["file_hash"],
+                    report_info["total_files"],
+                    report_info["total_time"],
+                    report_info["formatted_created_at_time"],
+                    partner_portal_name,
+                    portal['workspace_name'],
+                    ui_alert_shown_flag,
+                    db, download_dir, ui_invoice_count
+                )
+                if download_success is False:
+                    if retry_count == 0:
+                        retry_count += 1
+                        continue
+                    current_timestamp = datetime.now().strftime('%Y-%m-%d')
+                    remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
+                                        error_message)
+                    break
+
+            except Exception as e:
+                print(f"⚠️ Error processing portal {portal['uri']}: {e}")
+                try:
+                    current_timestamp = datetime.now().strftime('%Y-%m-%d')
+                    # formatted_created_at_time = datetime.fromtimestamp(created_at).strftime('%Y-%m-%d')
+                    subdomain = portal['uri'].split('//')[-1].split('/')[0].replace('.finkraft.ai', '')
+                    max_length = 50
+                    short_exception = str(e)[:max_length] + ("..." if len(str(e)) > max_length else "")
+                    remarks_to_mongo_db(subdomain, portal['workspace_name'], db, current_timestamp,
+                                        f" Exception during processing: {short_exception}")
+                except Exception as log_e:
+                    print(f"❌ Error while attempting to log exception to MongoDB: {log_e}")
+            finally:
+                if driver:
+                    driver.quit()
+
+            print(f"Completed automation for portal: {portal['uri']}\n\n")
+            break
+
 if __name__ == "__main__":
     main()
