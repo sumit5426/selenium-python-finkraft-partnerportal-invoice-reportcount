@@ -58,7 +58,7 @@ portals =[
       "table_name": "airline_recon_py",
       "status_column_name": "InvoiceStatus",
       "status_column_value": "Invoice Received",
-      "db_workspace_name": "Om sai intex"
+      "db_workspace_name": "Om Sai Intex"
   },
   {
       "uri": "https://fcm.finkraft.ai/auth/signin",
