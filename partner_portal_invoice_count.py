@@ -132,7 +132,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
     PASSWORD_TEXTBOX.send_keys(password)
     wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))).click()
     print("Successfully logged in...")
-    time.sleep(2)
+    time.sleep(3)
     max_attempts = 2
     for attempt in range(max_attempts):
         try:
@@ -209,40 +209,65 @@ def capture_report_id(driver):
         return None
     return report_id
 
+
 def get_count_from_postgres(connection_params, table_name, status_column, status_value, workspace_name):
     """
     Connects to PostgreSQL and returns the count of rows filtered by status and workspace.
     """
-    try:
-        conn = psycopg2.connect(
-            host=connection_params['host'],
-            port=connection_params['port'],
-            database=connection_params['database'],
-            user=connection_params['user'],
-            password=connection_params['password']
-        )
-        cursor = conn.cursor()
+    max_retries = 2
+    retry_delay = 2  # seconds
+    conn = None
+    cursor = None
+    result = None
 
-        query = sql.SQL("""
-            SELECT COUNT(*)
-            FROM {table}
-            WHERE {status_col} = %s
-              AND "Workspace" = %s
-        """).format(
-            table=sql.Identifier(table_name),
-            status_col=sql.Identifier(status_column)
-        )
+    for attempt in range(max_retries):
+        try:
+            conn = psycopg2.connect(
+                host=connection_params['host'],
+                port=connection_params['port'],
+                database=connection_params['database'],
+                user=connection_params['user'],
+                password=connection_params['password']
+            )
+            cursor = conn.cursor()
 
-        cursor.execute(query, (status_value, workspace_name))
-        ui_invoice_count = cursor.fetchone()[0]
+            query = sql.SQL("""
+                SELECT COUNT(*)
+                FROM {table}
+                WHERE {status_col} = %s
+                  AND "Workspace" = %s
+            """).format(
+                table=sql.Identifier(table_name),
+                status_col=sql.Identifier(status_column)
+            )
 
-        cursor.close()
-        conn.close()
-        print(f" - 📄 Total PDF invoices present in the UI is: {ui_invoice_count}")
-        return ui_invoice_count
-    except Exception as e:
-        print(f"Error querying PostgreSQL: {e}")
-        return None
+            cursor.execute(query, (status_value, workspace_name))
+            result = cursor.fetchone()[0]
+
+            cursor.close()
+            conn.close()
+            print(f" - 📄 Total PDF invoices present in the UI is: {result}")
+            return result
+
+        except Exception as e:
+            print(f"Error querying PostgreSQL (Attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                print("Max retries reached. Could not connect to PostgreSQL.")
+                result = None
+        finally:
+            try:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+            except Exception as e:
+                print(f"Error closing PostgreSQL connection: {e}")
+                return result
+    return result
 
 
 def remarks_to_mongo_db(partner_portal_name,workspace_name,db,current_timestamp,errormessage):
@@ -421,10 +446,32 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
     else:
         print("✅ Test Passed: Invoice download time is within limits")
     return True, ""
+def delete_today_data_from_mongodb(db):
+    """
+    Deletes all records from selenium-summary-report collection for today's date.
+    """
+    try:
+        today = datetime.now().strftime('%Y-%m-%d')  # Format: 2025-06-05
+        summary_collection = db["selenium-summary-report"]
+        result = summary_collection.delete_many({
+            "invoice_initialization_date_time": today
+        })
+        print(f"🗑️ Deleted {result.deleted_count} records from today's data ({today})")
+    except Exception as e:
+        print(f"❌ Error deleting today's data from MongoDB: {e}")
 
 
 
 def main():
+    # Delete today's data before starting execution
+    connection_string = (f"mongodb://{mongo_db_username}:{mongo_db_password}"
+                         "@mongodb.centralindia.cloudapp.azure.com/admin?"
+                         "directConnection=true&serverSelectionTimeoutMS=5000&appName=mongosh+2.2.3")
+    client = MongoClient(connection_string)
+    db = client['gstservice']
+    delete_today_data_from_mongodb(db)
+    client.close()
+
     for portal in portals:
         retry_count = 0
         max_retries = 1  # Only retry once
@@ -482,6 +529,14 @@ def main():
                     status_value,
                     workspace_name
                 )
+
+                if ui_invoice_count is None:
+                    print("❌ Failed to get invoice count from PostgreSQL. Skipping further processing.")
+                    current_timestamp = datetime.now().strftime('%Y-%m-%d')
+                    remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
+                                        "Failed to get invoice count from PostgreSQL")
+                    break
+
                 report_info = wait_for_report_completion(db, report_id, partner_portal_name,
                                                          portal["workspace_name"], ui_invoice_count)
 
