@@ -18,6 +18,9 @@ from dotenv import load_dotenv
 from datetime import datetime
 
 load_dotenv()
+run_id = datetime.now().strftime('%Y%m%d%H%M%S')
+with open("run_id.txt", "w") as f:
+    f.write(run_id)
 
 portals =[
     {
@@ -287,6 +290,7 @@ def remarks_to_mongo_db(partner_portal_name,workspace_name,db,current_timestamp,
         "perInvoiceDownloadTimeBasedOnZip": "--",
         "TestStausAsPerInvCount": "--",
         "TestStausAsPerInvTime": "--",
+        "runId":run_id
     }
     error_collection.insert_one(data_to_insert)
 
@@ -301,8 +305,8 @@ def wait_for_report_completion(db, report_id,partner_portal_name,workspace_name,
                             "Document with reportId not found in MongoDB.")
         print("Document with reportId not found in MongoDB.")
         return None
-    created_at = doc["createdAt"] / 1000
-    formatted_created_at_time = datetime.fromtimestamp(created_at).strftime('%Y-%m-%d')
+    created_at = doc["createdAt"] / 1000  # Convert from milliseconds to seconds
+    formatted_created_at_time = datetime.fromtimestamp(created_at).strftime('%d-%b-%Y %I:%M %p')
     print("🕒 Created At:", formatted_created_at_time)
     timeout=(ui_invoice_count*10)
     print(f"timeout period for {partner_portal_name} is {timeout} sec")
@@ -429,7 +433,8 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
         "perInvoiceDownloadTimeBasedOnZip": formatted_time_perinvoicetime_Zip,
         "TestStausAsPerInvCount": status_invoice_diff,
         "TestStausAsPerInvTime": status_time_diff,
-        "remark" : ""
+        "remark" : "",
+        "runId": run_id
     }
     summary_collection.insert_one(data_to_insert)
     print("✅ Report inserted successfully into DB")
@@ -446,31 +451,9 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
     else:
         print("✅ Test Passed: Invoice download time is within limits")
     return True, ""
-def delete_today_data_from_mongodb(db):
-    """
-    Deletes all records from selenium-summary-report collection for today's date.
-    """
-    try:
-        today = datetime.now().strftime('%Y-%m-%d')  # Format: 2025-06-05
-        summary_collection = db["selenium-summary-report"]
-        result = summary_collection.delete_many({
-            "invoice_initialization_date_time": today
-        })
-        print(f"🗑️ Deleted {result.deleted_count} records from today's data ({today})")
-    except Exception as e:
-        print(f"❌ Error deleting today's data from MongoDB: {e}")
-
 
 
 def main():
-    # Delete today's data before starting execution
-    connection_string = (f"mongodb://{mongo_db_username}:{mongo_db_password}"
-                         "@mongodb.centralindia.cloudapp.azure.com/admin?"
-                         "directConnection=true&serverSelectionTimeoutMS=5000&appName=mongosh+2.2.3")
-    client = MongoClient(connection_string)
-    db = client['gstservice']
-    delete_today_data_from_mongodb(db)
-    client.close()
 
     for portal in portals:
         retry_count = 0

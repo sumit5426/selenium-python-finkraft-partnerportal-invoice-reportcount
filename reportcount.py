@@ -18,6 +18,8 @@ from datetime import datetime
 import openpyxl
 
 load_dotenv()
+with open("run_id.txt", "r") as f:
+    run_id = f.read().strip()
 
 portals = [
     {
@@ -254,7 +256,8 @@ def remarks_to_mongo_db(partner_portal_name, workspace_name, db, current_timesta
         "totalTime": "--",
         "testStatusWrtTime": "--",
         "testStatusWrtRow": "--",
-        "remark": errormessage
+        "remark": errormessage,
+        "runId":run_id
     }
     error_collection.insert_one(data_to_insert)
 
@@ -269,8 +272,6 @@ def wait_for_report_completion(db, report_name, partner_portal_name, workspace_n
         return "NO_REPORT_FOUND"  # Special return value for report not found case
         # Parse the createdAt field from MongoDB
     iso_date_val = doc["createdAt"]
-    print("DEBUG createdAt value:", iso_date_val, type(iso_date_val))
-
     if isinstance(iso_date_val, str):
         utc_dt = parser.isoparse(iso_date_val)
     elif isinstance(iso_date_val, datetime):
@@ -283,9 +284,8 @@ def wait_for_report_completion(db, report_name, partner_portal_name, workspace_n
     ist_tz = pytz.timezone('Asia/Kolkata')
     ist_dt = utc_dt.astimezone(ist_tz)
     created_time_ts = ist_dt.timestamp()
-    formatted_created_at_time = ist_dt.strftime('%Y-%m-%d')
-    formatted_created_at_date_time = ist_dt.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"🕒 Created At (IST): {formatted_created_at_date_time}")
+    formatted_created_at_time = ist_dt.strftime('%d-%b-%Y %I:%M %p')
+    print(f"🕒 Created At (IST): {formatted_created_at_time}")
 
     timeout = (60 * 30)  # 30 minutes
     poll_interval = 10  # every 10 seconds
@@ -398,7 +398,8 @@ def download_and_verify_invoices(driver, file_hash, total_row_db, total_time, fo
         "totalTime": total_time_in_min,
         "testStatusWrtTime": test_status_wrt_time,
         "testStatusWrtRow": test_status_wrt_row,
-        "remark": ""
+        "remark": "",
+        "runId":run_id
     }
     summary_collection.insert_one(data_to_insert)
     print("✅ Report inserted successfully into DB")
@@ -415,29 +416,8 @@ def download_and_verify_invoices(driver, file_hash, total_row_db, total_time, fo
     else:
         print("✅ Test Passed: Invoice download time is within limits")
     return True,""
-def delete_today_data_from_mongodb(db):
-    """
-    Deletes all records from selenium-summary-report collection for today's date.
-    """
-    try:
-        today = datetime.now().strftime('%Y-%m-%d')  # Format: 2025-06-05
-        summary_collection = db["selenium-summary-excel-report"]
-        result = summary_collection.delete_many({
-            "report_initialization_date_time": today
-        })
-        print(f"🗑️ Deleted {result.deleted_count} records from today's data ({today})")
-    except Exception as e:
-        print(f"❌ Error deleting today's data from MongoDB: {e}")
 
 def main():
-    # Delete today's data before starting execution
-    connection_string = (f"mongodb://{mongo_db_username}:{mongo_db_password}"
-                         "@mongodb.centralindia.cloudapp.azure.com/admin?"
-                         "directConnection=true&serverSelectionTimeoutMS=5000&appName=mongosh+2.2.3")
-    client = MongoClient(connection_string)
-    db = client['gstservice']
-    delete_today_data_from_mongodb(db)
-    client.close()
 
     for portal in portals:
         retry_count = 0

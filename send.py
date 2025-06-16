@@ -10,6 +10,9 @@ import re
 
 # Load environment variables from .env file
 load_dotenv()
+with open("run_id.txt", "r") as f:
+    run_id = f.read().strip()
+
 mongo_db_username = os.environ.get("MONGO_DB_USERNAME")
 mongo_db_password = os.environ.get("MONGO_DB_PASSWORD")
 api_key = os.environ.get("SENDGRID_API_KEY").strip()
@@ -38,7 +41,7 @@ def get_invoice_summary_data_for_today():
     today_date = datetime.now().strftime("%Y-%m-%d")
     print(f"Looking for invoice summary data with invoice_initialization_date_time = {today_date}")
     data = list(collection_invoice.find(
-        {"invoice_initialization_date_time": today_date},
+        {"runId": run_id},
         {"_id": 0}
     ))
     if not data:
@@ -52,7 +55,7 @@ def get_excel_summary_data_for_today():
     today_date = datetime.now().strftime("%Y-%m-%d")
     print(f"Looking for excel summary data with invoice_initialization_date_time = {today_date}")
     data = list(collection_excel.find(
-        {"report_initialization_date_time": today_date},
+        {"runId": run_id},
         {"_id": 0}
     ))
     if not data:
@@ -135,22 +138,22 @@ def send_email(table_data):
     mail.from_email = from_email
     mail.template_id = template_id
 
-    personalization = Personalization()
-    to_emails = ["sumit@kgrp.in"]
-    for email in to_emails:
-        personalization.add_to(Email(email))
-    cc_emails = ["sushmitha.sonu02@gmail.com"]
-    for email in cc_emails:
-        personalization.add_cc(Email(email))
-
     # personalization = Personalization()
-    # to_emails = ["ambuj@finkraft.ai", "ranjith@kgrp.in"]
+    # to_emails = ["sumit@kgrp.in"]
     # for email in to_emails:
     #     personalization.add_to(Email(email))
-    # cc_emails = ["venu@kgrp.in", "tabrez@kgrp.in", "komalkant@kgrp.in", "kj@kgrp.in", "arnavjain@kgrp.in",
-    #              "sumit@kgrp.in", "sushmitha.sonu02@gmail.com"]
+    # cc_emails = ["sushmitha.sonu02@gmail.com"]
     # for email in cc_emails:
     #     personalization.add_cc(Email(email))
+
+    personalization = Personalization()
+    to_emails = ["ambuj@finkraft.ai", "ranjith@kgrp.in"]
+    for email in to_emails:
+        personalization.add_to(Email(email))
+    cc_emails = ["venu@kgrp.in", "tabrez@kgrp.in", "komalkant@kgrp.in", "kj@kgrp.in", "arnavjain@kgrp.in",
+                 "sumit@kgrp.in", "sushmitha.sonu02@gmail.com"]
+    for email in cc_emails:
+        personalization.add_cc(Email(email))
 
     personalization.dynamic_template_data = dynamic_template_data
 
