@@ -136,7 +136,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
     wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))).click()
     print("Successfully logged in...")
     time.sleep(3)
-    max_attempts = 2
+    max_attempts = 3
     for attempt in range(max_attempts):
         try:
             workspace_dropdown = wait.until(
@@ -217,7 +217,7 @@ def get_count_from_postgres(connection_params, table_name, status_column, status
     """
     Connects to PostgreSQL and returns the count of rows filtered by status and workspace.
     """
-    max_retries = 2
+    max_retries = 3
     retry_delay = 2  # seconds
     conn = None
     cursor = None
@@ -348,7 +348,7 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
     file_hash_flag = True
     print("✅ fileHash is present. Flag:", file_hash_flag)
     download_url = f"https://files.finkraft.ai/invoice-{file_hash}"
-    print(f"🌐 Navigating to file download URL: {download_url}")
+    print(f"🌐 Navigating to file download URL")
     driver.get(download_url)
     time.sleep(3)
     try:
