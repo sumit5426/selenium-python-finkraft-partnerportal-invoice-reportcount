@@ -138,22 +138,20 @@ def send_email(table_data):
     mail.from_email = from_email
     mail.template_id = template_id
 
-    # personalization = Personalization()
-    # to_emails = ["sumit@kgrp.in"]
-    # for email in to_emails:
-    #     personalization.add_to(Email(email))
-    # cc_emails = ["sushmitha.sonu02@gmail.com"]
-    # for email in cc_emails:
-    #     personalization.add_cc(Email(email))
-
     personalization = Personalization()
-    to_emails = ["ambuj@finkraft.ai", "ranjith@kgrp.in"]
+    to_emails = ["sumit@kgrp.in"]
     for email in to_emails:
         personalization.add_to(Email(email))
-    cc_emails = ["venu@kgrp.in", "tabrez@kgrp.in", "komalkant@kgrp.in", "kj@kgrp.in", "arnavjain@kgrp.in",
-                 "sumit@kgrp.in", "sushmitha.sonu02@gmail.com"]
-    for email in cc_emails:
-        personalization.add_cc(Email(email))
+   
+
+    # personalization = Personalization()
+    # to_emails = ["ambuj@finkraft.ai", "ranjith@kgrp.in"]
+    # for email in to_emails:
+    #     personalization.add_to(Email(email))
+    # cc_emails = ["venu@kgrp.in", "tabrez@kgrp.in", "komalkant@kgrp.in", "kj@kgrp.in", "arnavjain@kgrp.in",
+    #              "sumit@kgrp.in", "sushmitha.sonu02@gmail.com"]
+    # for email in cc_emails:
+    #     personalization.add_cc(Email(email))
 
     personalization.dynamic_template_data = dynamic_template_data
 
