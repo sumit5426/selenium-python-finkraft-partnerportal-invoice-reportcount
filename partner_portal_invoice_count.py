@@ -22,7 +22,7 @@ run_id = datetime.now().strftime('%Y%m%d%H%M%S')
 with open("run_id.txt", "w") as f:
     f.write(run_id)
 
-portals =[
+morning_workspaces =[
     {
       "uri": "https://cleartrip.finkraft.ai/auth/signin",
       "workspace_name": "Unitus capital",
@@ -88,6 +88,80 @@ portals =[
         "db_workspace_name": "British International Investment"
 }
 ]
+afternoon_workspaces =[
+    {
+      "uri": "https://cleartrip.finkraft.ai/auth/signin",
+      "workspace_name": "Saksoft",
+      "table_name": "flight_recon_main",
+      "status_column_name": "InvoiceStatus",
+      "status_column_value": "Invoice Received",
+      "db_workspace_name": "Saksoft"
+  },
+
+{    "uri": "https://balmer.finkraft.ai/auth/signin",
+      "workspace_name": "Eastern regional office aicte kolkata",
+      "table_name": "airline_recon_balmer",
+      "status_column_name": "InvoiceStatus",
+      "status_column_value": "Invoice Received",
+      "db_workspace_name": "EASTERN REGIONAL OFFICE AICTE KOLKATA"
+  },
+  {
+    "uri": "https://myyatra.finkraft.ai/auth/signin",
+    "workspace_name": "Herbalife international india p ltd yatra",
+    "table_name": "flight_recon_yatra",
+    "status_column_name": "StatusofInvoice",
+    "status_column_value": "Invoice Received",
+    "db_workspace_name": "HERBALIFE INTERNATIONAL INDIA P LTD Yatra"
+  },
+  {
+    "uri": "https://mmt.finkraft.ai/auth/signin",
+    "workspace_name": "Kotak securities",
+    "table_name": "airline_recon_mmt",
+    "status_column_name": "MainInvoiceStatus",
+    "status_column_value": "Invoice Received",
+    "db_workspace_name": "Kotak Securities"
+  },
+   {
+      "uri": "https://pyt.finkraft.ai/auth/signin",
+      "workspace_name": "Blue heaven cosmetics ",
+      "table_name": "airline_recon_py",
+      "status_column_name": "InvoiceStatus",
+      "status_column_value": "Invoice Received",
+      "db_workspace_name": "BLUE HEAVEN COSMETICS"
+  },
+  {
+      "uri": "https://fcm.finkraft.ai/auth/signin",
+      "workspace_name": "One ocean network",
+      "table_name": "airline_recon_fcm",
+      "status_column_name": "InvoiceStatus",
+      "status_column_value": "Invoice Received",
+      "db_workspace_name": "ONE OCEAN NETWORK"
+ },
+ {
+      "uri": "https://bcd.finkraft.ai/auth/signin",
+      "workspace_name": "Viewics",
+      "table_name": "airline_recon_bcd",
+      "status_column_name": "InvoiceStatus",
+      "status_column_value": "Invoice Received",
+      "db_workspace_name": "Viewics"
+ },
+{
+        "uri": "https://atpi.finkraft.ai/auth/signin",
+        "workspace_name": "The great eastern shipping",
+        "table_name": "airline_recon_atpi",
+        "status_column_name": "InvoiceStatus",
+        "status_column_value": "Invoice Received",
+        "db_workspace_name": "The Great Eastern Shipping"
+}
+]
+
+run_set = os.environ.get("RUN_SET", "morning")
+if run_set == "morning":
+    portals = morning_workspaces
+else:
+    portals = afternoon_workspaces
+
+
 login_username = os.environ.get("LOGIN_USERNAME")
 login_password = os.environ.get("LOGIN_PASSWORD")
 mongo_db_username = os.environ.get("MONGO_DB_USERNAME")

@@ -1,4 +1,5 @@
 name: Selenium InvoiceCount Tests
+
 env:
   LOGIN_USERNAME: ${{ secrets.LOGIN_USERNAME }}
   LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
@@ -11,15 +12,19 @@ env:
 
 on:
   schedule:
-    - cron: '30 23 * * *'  # Runs every day at 2 AM UTC
-    - cron: '30 7 * * *'
-  workflow_dispatch:  # Manual trigger option
+    - cron: '30 23 * * *'  # 5:00 AM IST
+    - cron: '30 8 * * *'   # 1:00 PM IST
+  workflow_dispatch:
+    inputs:
+      run_set:
+        description: 'Which workspace set to run? (morning or afternoon)'
+        required: false
+        default: 'morning'
 
 jobs:
-  selenium-tests:
+  invoice-report-count:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-
 
     steps:
       - name: Checkout code
@@ -53,11 +58,24 @@ jobs:
       - name: Set timezone to Asia/Kolkata
         run: sudo timedatectl set-timezone Asia/Kolkata
 
-      - name: Run partner_portal_invoice_count
+      - name: Determine RUN_SET
+        id: setrunset
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "RUN_SET=${{ github.event.inputs.run_set }}" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "30 23 * * *" ]; then
+            echo "RUN_SET=morning" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "30 7 * * *" ]; then
+            echo "RUN_SET=afternoon" >> $GITHUB_ENV
+          else
+            echo "RUN_SET=morning" >> $GITHUB_ENV
+          fi
+
+      - name: Run partner_portal_invoice_count.py
         run: python partner_portal_invoice_count.py
 
-      - name: Run reportcount
+      - name: Run reportcount.py
         run: python reportcount.py
 
-      - name: Run send
+      - name: Run send.py
         run: python send.py
