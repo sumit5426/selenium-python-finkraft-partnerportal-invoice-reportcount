@@ -252,11 +252,12 @@ def login_and_select_workspace(driver, uri, workspace_name):
                 return False, partner_portal_name
     return False, partner_portal_name
 
-def capture_report_id(driver):
+def capture_report_message_and_id(driver):
     print("📡 Monitoring network requests to capture the invoice report API response...")
     timeout = time.time() + 60  # 60 seconds timeout
     driver.requests.clear()
     report_id = None
+    already_generated = False
     found_url = None
     while time.time() < timeout:
         matching_requests = [
@@ -269,18 +270,26 @@ def capture_report_id(driver):
             try:
                 response_body = request.response.body.decode('utf-8', errors='ignore')
                 body_data = json.loads(response_body)
-                if 'data' in body_data and 'reportId' in body_data['data']:
-                    report_id = body_data['data']['reportId']
-                    print(f"ReportID Extracted successfully from Network tab: {report_id}")
-                    found_url = request.url
+                message = body_data.get('message', '')
+                if message == "Invoice request submitted successfully. Will send you the invoice once ready":
+                    if 'data' in body_data and 'reportId' in body_data['data']:
+                        report_id = body_data['data']['reportId']
+                        print(f"ReportID Extracted successfully from Network tab: {report_id}")
+                        found_url = request.url
+                        break
+                elif message == "This invoices has already been generated. We have sent you the link in your email.":
+                    print("Invoice already generated for this workspace today. Skipping to next workspace.")
+                    already_generated = True
                     break
+                else:
+                    print(f"Received unexpected message: {message}")
             except Exception as e:
                 print(f"⚠ Error parsing JSON from {request.url}: {e}")
-        if report_id:
-            print(f"➡ Found API: {found_url}")
-            print(f"✅ ReportID Extracted: {report_id}")
+        if report_id or already_generated:
             break
         time.sleep(1)
+    if already_generated:
+        return "ALREADY_GENERATED"
     if not report_id:
         print("❌ reportId not found in network traffic within timeout.")
         return None
@@ -555,7 +564,13 @@ def main():
                                         "Workspace selection failed after two times retry attempts")
                     break
 
-                report_id = capture_report_id(driver)
+                report_id = capture_report_message_and_id(driver)
+                if report_id == "ALREADY_GENERATED":
+                    print(f"Workspace  {portal['workspace_name']} already has a report for today, skipping.")
+                    current_timestamp = datetime.now().strftime('%Y-%m-%d')
+                    remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
+                                        " already has a report for today, skipping.")
+                    break
                 if report_id is None:
                     # Log error to MongoDB and skip to next portal if report_id is not found
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
