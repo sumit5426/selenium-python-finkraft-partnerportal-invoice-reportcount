@@ -99,7 +99,7 @@ afternoon_workspaces = [
     },
     {
         "uri": "https://pyt.finkraft.ai/auth/signin",
-        "workspace_name": "Blue heaven cosmetics ",
+        "workspace_name": "Blue heaven cosmetics",
         "table_name": "airline_recon_py",
         "db_workspace_name": "BLUE HEAVEN COSMETICS"
     },
