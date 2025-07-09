@@ -13,7 +13,7 @@ env:
 on:
   schedule:
     - cron: '30 23 * * *'  # 5:00 AM IST
-    - cron: '30 8 * * *'   # 1:00 PM IST
+    - cron: '30 7 * * *'   # 1:00 PM IST
   workflow_dispatch:
     inputs:
       run_set:
