@@ -123,7 +123,7 @@ afternoon_workspaces =[
   },
    {
       "uri": "https://pyt.finkraft.ai/auth/signin",
-      "workspace_name": "Blue heaven cosmetics ",
+      "workspace_name": "Blue heaven cosmetics",
       "table_name": "airline_recon_py",
       "status_column_name": "InvoiceStatus",
       "status_column_value": "Invoice Received",
@@ -209,7 +209,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
     PASSWORD_TEXTBOX.send_keys(password)
     wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))).click()
     print("Successfully logged in...")
-    time.sleep(3)
+    time.sleep(5)
     max_attempts = 3
     for attempt in range(max_attempts):
         try:
@@ -246,7 +246,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
             if attempt < max_attempts - 1:
                 print("Retrying workspace selection...")
                 driver.refresh()
-                time.sleep(2)
+                time.sleep(5)
             else:
                 print("Max attempts reached. Raising the error.")
                 return False, partner_portal_name
