@@ -15,6 +15,7 @@ from psycopg2 import sql
 from insert_mongo import insert_into_mongo, prepare_report, write_json_summary,update_summary
 from utils import resolve_expected_ag
 import json
+from send_creds import trigger_creds
 
 now_utc = datetime.now(timezone.utc)
 print(now_utc.isoformat())
@@ -302,6 +303,7 @@ def main() -> None:
         # -------------------- LOGIN & WORKSPACE --------------------
         try:
             portal_name = login_and_pick_workspace(driver)
+            print("Portal name", portal_name)
             summary["portal"] = portal_name
         except WorkspaceSwitchError as e:
             summary["remarks"].append(str(e))  # "❌ Failed to switch workspace after 3 attempts."
@@ -430,6 +432,8 @@ def main() -> None:
         # Final Mongo Insert
         insert_into_mongo(summary)
         # write_json_summary(summary)
+        trigger_creds()
+        print("Mail Sent")
 
     finally:
         try:
