@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import psycopg2
 from dotenv import load_dotenv
@@ -12,8 +12,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException, StaleElementReferenceException
 from psycopg2 import sql
-from insert_mongo import insert_into_mongo, prepare_report, write_json_summary
+from insert_mongo import insert_into_mongo, prepare_report, write_json_summary,update_summary
+from utils import resolve_expected_ag
+import json
 
+now_utc = datetime.now(timezone.utc)
+print(now_utc.isoformat())
 # ------------------- 1.  CONFIGURATION --------------------------#
 load_dotenv()
 
@@ -81,12 +85,16 @@ def pg_connect():
     )
 
 # ------------------------- LOGIN FLOW -----------------------------
+class WorkspaceSwitchError(Exception):
+    pass
+
 def login_and_pick_workspace(driver):
     wait = WebDriverWait(driver, 15)
     driver.get(PORTAL_URL)
     page_title = driver.title
     print(page_title)
     partner_portal_name = page_title.split("-")[0].strip()
+    print("Portal name:" , partner_portal_name)
     wait.until(EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Email']"))).send_keys(LOGIN_USERNAME)
     wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']"))).click()
 
@@ -108,7 +116,7 @@ def login_and_pick_workspace(driver):
                 driver.refresh()
             else:
                 raise RuntimeError("Could not choose workspace")
-    return partner_portal_name        
+    return partner_portal_name         
 
 def upload_csv(driver, csv_path):
     WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, X_CREDENTIALS_TAB))).click()
@@ -187,41 +195,40 @@ def pg_status(gstin):
         row = cur.fetchone()
         return row[0].upper() if row else "UNKNOWN"
 
-def wait_pg_non_pending(gstin, limit=12, delay=5):
+def wait_pg_non_pending(gstin, limit=12, delay=5, threshold=8):
+    """
+    Polls the PG status for the GSTIN until it's no longer PROCESSING.
+    Returns:
+        (final_status, is_slow)
+    """
     for i in range(limit):
         st = pg_status(gstin)
         print(f" ⏱️ poll {i+1}/{limit} – PG = {st}")
-        if st != "PENDING":
-            return st
+        if st != "PROCESSING":
+            is_slow = i + 1 > threshold  # if it took more than 8 tries
+            return st, is_slow
         time.sleep(delay)
-    return None
+    # Timeout – still PROCESSING after all tries
+    print("--- Poll timeout of processing ---")
+    return None, True
 
-def wait_pg_become_pending(gstin, limit=6, delay=4):
-    for i in range(limit):
-        st = pg_status(gstin)
-        print(f" ⏳ waiting for PENDING {i + 1}/{limit} – PG status = {st}")
-        if st == "PENDING":
-            return True
-        time.sleep(delay)
-    return False
 
 def wait_ag_matches(driver, gstin: str, expected: str,
-                    tries: int = 6, delay: float = 3.0) -> bool:
+                    tries: int = 6, delay: float = 2.0) -> tuple[bool, bool]:
     """
-    After PG moved to a final state, poll AG‑Grid until the cell
-    shows the expected text. Returns True if match found.
+    Poll AG‑Grid until it shows the expected status for a GSTIN.
+    Returns:
+        (match_found: bool, is_slow: bool)
     """
     for n in range(1, tries + 1):
         ag = get_status(driver, gstin)
         print(f"   ⏳ AG poll {n}/{tries} – AG status = {ag}")
         if ag == expected:
-            return True
+            is_slow = (n * delay) > 10.0
+            return True, is_slow
         time.sleep(delay)
-        # a light refresh helps AG re‑query its data‑source
         refresh_and_filter(driver, gstin)
-    return False
-
-
+    return False, True  # match not found, also too slow
 
 # ───── Editing ─────
 
@@ -244,139 +251,187 @@ def edit_cell(driver, cell_xpath: str, new_val: str, retries: int = 3) -> bool:
     return False
 
 def edit_creds_in_grid(driver, gstin, new_user, new_pass):
-    # 1. open row
+    # 1. Open row
     quick_filter(driver, gstin)
     wait_for_row(driver, gstin)
 
-    # 2. inline‑edit user & password
+    # 2. Inline‑edit user & password
     if not edit_cell(driver, X_USERNAME_CELL.format(gstin=gstin), new_user):
         raise RuntimeError("Username inline‑edit failed")
     if not edit_cell(driver, X_PASSWORD_CELL.format(gstin=gstin), new_pass):
         raise RuntimeError("Password inline‑edit failed")
 
-    # 3. click Save & confirm toast
+    # 3. Click Save & confirm toast
     WebDriverWait(driver, 4).until(
         EC.element_to_be_clickable((By.XPATH, X_SAVE_BTN))
     ).click()
-    print("💾 Save button clicked")
-
-    WebDriverWait(driver, 6).until(
+    print("💾 Save button clicked") 
+    WebDriverWait(driver, 1).until(
         EC.visibility_of_element_located(
             (By.XPATH, "//div[contains(@class,'ant-message-success')]")
         )
     )
     print("✅ Success popup appeared")
 
-    # 4. first refresh/search → AG = pending
+    # 4. Refresh grid after saving creds
     refresh_and_filter(driver, gstin)
-
-    # 5. poll PG until NOT pending
-    pg_final = wait_pg_non_pending(gstin)
-    print(f"📬 PG resolved to: {pg_final}")
-
-    # 6. final refresh/search & compare
-    refresh_and_filter(driver, gstin)
-    ag_final = get_status(driver, gstin)
-    print(f"📋 AG: {ag_final}  |  PG: {pg_final}")
-
-    expected = (
-        "error verifying" if pg_final == "EXCEPTION" else
-        "valid"           if pg_final == "ACTIVE"    else
-        ("wrong credential" if pg_final == "INVALID" and get_username(driver, gstin)
-         else "not available") if pg_final == "INVALID" else
-        "pending"
-    )
-
-    if ag_final != expected:
-        raise RuntimeError("❌ Post‑edit mismatch")
-    print("🎯 ✅ AG matches PG → edit successful")
-
+    print("🔁 Grid refreshed after editing creds")
 
 # ───── Main ─────
 
 def main() -> None:
     driver = init_driver()
+
     summary = {
-        "portal": "Finkraft",
+        "portal": None,
         "workspace": WORKSPACE_NAME,
         "creds_type": "GST",
-        "status": True,            # flipped on first error
-        "bulk_upload_success": True,
-        "edit_success": False,     # set to True if edit flow passes
+        "bulk_upload_csv": False,
+        "verifier_updated_pg": None,
+        "verifier_to_pg_time_ok": None,
+        "ag_updated_pg_status": None,
+        "ag_update_time_ok": None,
+        "cell_edit_success": None,
+        "post_edit_pg_ag_sync": None,
+        "post_edit_pg_ag_time_ok": None,
         "remarks": [],
-        "results": [],             # <- every GSTIN result will be appended here
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
     try:
-        login_and_pick_workspace(driver)
+        # -------------------- LOGIN & WORKSPACE --------------------
+        try:
+            portal_name = login_and_pick_workspace(driver)
+            summary["portal"] = portal_name
+        except WorkspaceSwitchError as e:
+            summary["remarks"].append(str(e))  # "❌ Failed to switch workspace after 3 attempts."
+            insert_into_mongo(summary)
+            # write_json_summary(summary)
+            return
 
-        # -------------- bulk upload -----------------
+        # -------------------- 1. Bulk Upload --------------------
         try:
             upload_csv(driver, CSV_PATH)
             refresh_grid(driver)
+            summary["bulk_upload_csv"] = True
         except Exception as e:
-            summary["bulk_upload_success"] = False
-            summary["status"] = False
-            summary["remarks"].append(f"Bulk upload failed: {e}")
-            raise                                          # abort early
+            summary.update({
+                "bulk_upload_csv": False,
+                "remarks": [f"❌ [Bulk Upload] Failed: {e}"]
+            })
+            insert_into_mongo(summary)
+            # write_json_summary(summary)
+            return
 
-        # ---------- initial validation loop ----------
+        # -------------------- 2. PG + AG Status Check --------------------
         df = pd.read_csv(CSV_PATH, dtype=str).fillna("")
         df.columns = [c.lower().strip() for c in df.columns]
+
+        verifier_success = True
+        verifier_slow = False
+        ag_match_success = True
+        ag_slow = False
 
         for rec in df.to_dict(orient="records"):
             gstin = rec["gstin"]
             print(f"\n🔍 GSTIN {gstin}")
 
             if not (quick_filter(driver, gstin) and wait_for_row(driver, gstin)):
-                summary["status"] = False
-                summary["remarks"].append(f"{gstin}: row not visible after upload")
-                summary["results"].append((gstin, "N/A", pg_status(gstin)))
+                verifier_success = False
+                summary["remarks"].append(f"❌ [Row Load] GSTIN not visible after upload: {gstin}")
                 continue
 
             ag = get_status(driver, gstin)
-            pg = pg_status(gstin)
+            pg = (pg_status(gstin) or "").upper()
 
             if ag == "pending":
-                pg = wait_pg_non_pending(gstin)
+                pg, pg_slow = wait_pg_non_pending(gstin)
+                pg = (pg or "").upper()
                 refresh_and_filter(driver, gstin)
                 ag = get_status(driver, gstin)
 
-            expected = (
-                "error verifying" if pg == "EXCEPTION" else
-                "valid"           if pg == "ACTIVE"    else
-                ("wrong credential" if pg == "INVALID" and get_username(driver, gstin)
-                 else "not available") if pg == "INVALID" else
-                "pending"
-            )
+                if not pg:
+                    verifier_success = False
+                    summary["remarks"].append(f"❌ [PG Pending Timeout] for {gstin}")
+                    continue
+                if pg_slow:
+                    verifier_slow = True
 
-            if ag != expected:
-                summary["status"] = False
-                summary["remarks"].append(f"{gstin}: AG '{ag}' ≠ expected '{expected}'")
+            username = get_username(driver, gstin)
+            expected = resolve_expected_ag(pg, username)
 
-            # >>> append per‑gstin triple right here
-            summary["results"].append((gstin, ag, pg))
+            if ag != expected or ag == "pending":
+                ag_match_success = False
+                summary["remarks"].append(
+                    f"❌ [PG → AG Mismatch] GSTIN {gstin} → AG: '{ag}' ≠ Expected: '{expected}'"
+                )
+            else:
+                _, ag_delay = wait_ag_matches(driver, gstin, expected)
+                if ag_delay:
+                    ag_slow = True
 
-        # -------------- edit flow -------------------
+        summary.update({
+            "verifier_updated_pg": verifier_success,
+            "verifier_to_pg_time_ok": not verifier_slow,
+            "ag_updated_pg_status": ag_match_success,
+            "ag_update_time_ok": not ag_slow
+        })
+
+        if not verifier_success:
+            summary["remarks"].append("❌ [Verifier → PG] PG not updated for some GSTINs.")
+        if verifier_slow:
+            summary["remarks"].append("⚠️ [Verifier → PG Timing] PG update was slow.")
+        if not ag_match_success:
+            summary["remarks"].append("❌ [PG → AG] AG status mismatch for some GSTINs.")
+        if ag_slow:
+            summary["remarks"].append("⚠️ [PG → AG Timing] AG update was slow.")
+
+        # If major failure, skip edit step
+        if not verifier_success or not ag_match_success:
+            insert_into_mongo(summary)
+            # write_json_summary(summary)
+            return
+
+        # -------------------- 3. Edit Flow --------------------
         print(f"\n🖊️ Editing {EDIT_GSTIN}")
         try:
             edit_creds_in_grid(driver, EDIT_GSTIN, NEW_USERNAME, NEW_PASSWORD)
-            summary["edit_success"] = True
+            summary["cell_edit_success"] = True
+
+            pg_final, pg_slow = wait_pg_non_pending(EDIT_GSTIN)
+            if pg_final is None:
+                raise RuntimeError("PG still pending after timeout")
+
+            expected = resolve_expected_ag(pg_final, get_username(driver, EDIT_GSTIN))
+            refresh_and_filter(driver, EDIT_GSTIN)
+            ag_final = get_status(driver, EDIT_GSTIN)
+            matched, ag_slow = wait_ag_matches(driver, EDIT_GSTIN, expected)
+
+            summary["post_edit_pg_ag_sync"] = (ag_final == expected)
+            summary["post_edit_pg_ag_time_ok"] = not (pg_slow or ag_slow)
+
+            if pg_slow:
+                summary["remarks"].append("⚠️ [Post-Edit PG Timing] PG update slow.")
+            if ag_slow:
+                summary["remarks"].append("⚠️ [Post-Edit AG Timing] AG update slow.")
+            if ag_final != expected:
+                summary["remarks"].append(
+                    f"❌ [Post-Edit] AG mismatch → AG: {ag_final}, Expected: {expected}"
+                )
+
         except Exception as e:
-            summary["status"] = False
-            summary["edit_success"] = False
-            summary["remarks"].append(f"Edit flow failed: {e}")
+            summary.update({
+                "cell_edit_success": False,
+                "post_edit_pg_ag_sync": None,
+                "post_edit_pg_ag_time_ok": None
+            })
+            summary["remarks"].append(f"❌ [Edit] Failed for {EDIT_GSTIN}: {e}")
+
+        # Final Mongo Insert
+        insert_into_mongo(summary)
+        # write_json_summary(summary)
 
     finally:
-        # ------------- store + quit -----------------
-        try:
-            insert_into_mongo(summary)         # no‑op if URI unset
-        except Exception as e:
-            print("⚠️ Mongo insert failed:", e)
-
-        write_json_summary(summary)            # always write summary.json
-
         try:
             driver.quit()
         except Exception:

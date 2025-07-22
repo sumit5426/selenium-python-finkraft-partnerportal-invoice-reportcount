@@ -28,6 +28,18 @@ MONGO_URI = (
     "directConnection=true&serverSelectionTimeoutMS=5000&appName=gst‑run"
 )
 
+def update_summary(summary_id, updates: dict) -> None:
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client[MONGO_DB]
+        db[MONGO_COLLECTION].update_one(
+            {"_id": summary_id},
+            {"$set": updates}
+        )
+        print("✅ Summary updated in MongoDB")
+    except Exception as e:
+        print(f"❌ Failed to update summary: {e}")
+
 # ────────────────────────────────────────────────────────────────
 #  I/O helpers
 # ────────────────────────────────────────────────────────────────
@@ -71,19 +83,27 @@ def prepare_report(
         "portal": portal,
         "workspace": workspace,
         "creds_type": creds_type,
-        "bulk_upload_success": True,     # hard‑coded; flip outside if needed
-        "edit_success": edit_result,
-        "status": True,                  # becomes False if any mismatch
+        "bulk_upload_csv": True,              # Assume True unless flipped outside
+        "verifier_updated_pg": False,         # Set externally if applicable
+        "verifier_to_pg_time_ok": True,       # Assumed True unless timediff issue
+        "ag_updated_pg_status": True,         # Set False if mismatch found below
+        "ag_update_time_ok": True,            # Assume True unless delayed
+        "cell_edit_success": edit_result,
+        "post_edit_pg_ag_sync": True,         # Assumed synced unless mismatches found again
+        "post_edit_pg_ag_time_ok": True,      # Set False externally if needed
         "remarks": [],
-        "timestamp": datetime.utcnow() 
+        "timestamp": datetime.utcnow().isoformat()
     }
 
-    # Flag mismatches
+    # Flag mismatches before edit (verifier updated to PG)
     for gstin, ag_stat, expected_stat in ag_pg_results:
         if ag_stat != expected_stat:
-            summary["status"] = False
+            summary["ag_updated_pg_status"] = False
+            summary["post_edit_pg_ag_sync"] = False
             summary["remarks"].append(
                 f"{gstin}: AG='{ag_stat}' ≠ PG='{expected_stat}'"
             )
 
     return summary
+
+
