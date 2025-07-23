@@ -25,7 +25,7 @@ SG_API_KEY = os.getenv("SENDGRID_API_KEY")
 TEMPLATE_ID = os.getenv("TEMPLATE_ID")
 FROM_EMAIL = "sushmitha@kgrp.in"
 TO_EMAILS = ["sushu.sushmitha02@gmail.com"]
-# CC_EMAILS = ["sushmitha.sonu02@gmail.com"]
+# CC_EMAILS = ["sumit@kgrp.in"]
 
 def fetch_today_gst_docs():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
