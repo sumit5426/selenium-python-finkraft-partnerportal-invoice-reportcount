@@ -328,7 +328,7 @@ def main() -> None:
         # -------------------- 2. PG + AG Status Check --------------------
         df = pd.read_csv(CSV_PATH, dtype=str).fillna("")
         df.columns = [c.lower().strip() for c in df.columns]
-
+        print(f"📊 Loaded {len(df)} records from CSV: {df.columns}")
         verifier_success = True
         verifier_slow = False
         ag_match_success = True
