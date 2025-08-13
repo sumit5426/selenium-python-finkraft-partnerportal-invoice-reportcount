@@ -226,7 +226,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
                 time.sleep(2)
             else:
                 print("Max attempts reached. Raising the error.")
-                return False, partner_portal_name, None, f"Workspace selection failed: {str(e)}"
+                return False, partner_portal_name, None, f"Workspace selection failed"
 
     return False, partner_portal_name, None, "Workspace selection failed after all retries"
 
