@@ -65,7 +65,7 @@ jobs:
             echo "RUN_SET=${{ github.event.inputs.run_set }}" >> $GITHUB_ENV
           elif [ "${{ github.event.schedule }}" = "30 23 * * *" ]; then
             echo "RUN_SET=morning" >> $GITHUB_ENV
-          elif [ "${{ github.event.schedule }}" = "30 7 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "30 8 * * *" ]; then
             echo "RUN_SET=afternoon" >> $GITHUB_ENV
           else
             echo "RUN_SET=morning" >> $GITHUB_ENV
