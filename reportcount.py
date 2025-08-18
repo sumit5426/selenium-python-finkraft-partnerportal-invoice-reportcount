@@ -99,7 +99,7 @@ afternoon_workspaces = [
     },
     {
         "uri": "https://pyt.finkraft.ai/auth/signin",
-        "workspace_name": "Blue heaven cosmetics ",
+        "workspace_name": "Blue heaven cosmetics",
         "table_name": "airline_recon_py",
         "db_workspace_name": "BLUE HEAVEN COSMETICS"
     },
@@ -173,7 +173,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
     driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
     print("Successfully logged in...")
     time.sleep(3)
-    max_attempts = 3
+    max_attempts = 4
     for attempt in range(max_attempts):
         try:
             workspace_dropdown = wait.until(
@@ -225,8 +225,8 @@ def login_and_select_workspace(driver, uri, workspace_name):
                 driver.refresh()
                 time.sleep(2)
             else:
-                print("Max attempts reached. Raising the error.")
-                return False, partner_portal_name, None, f"Workspace selection failed: {str(e)}"
+                print(f"Max attempts reached. Raising the error")
+                return False, partner_portal_name, None, f"Workspace selection failed"
 
     return False, partner_portal_name, None, "Workspace selection failed after all retries"
 
@@ -482,8 +482,8 @@ def main():
         max_retries = 1  # Only retry once
         while retry_count <= max_retries:
             connection_string = (f"mongodb://{mongo_db_username}:{mongo_db_password}"
-                                 "@mongodb.centralindia.cloudapp.azure.com/admin?"
-                                 "directConnection=true&serverSelectionTimeoutMS=5000&connectTimeoutMS=60000&appName=mongosh+2.2.3")
+                                 "@mongodb.internal.finkraftai.com/admin?"
+                                 "directConnection=true&serverSelectionTimeoutMS=20000&appName=mongosh+2.2.3")
             client = MongoClient(connection_string)
             db = client['gstservice']
             print(f"Starting automation for portal:{portal['uri']} and workspace:{portal['workspace_name']}")
@@ -504,7 +504,7 @@ def main():
                     break
 
                 pg_connection_params = {
-                    "host": "postgres.centralindia.cloudapp.azure.com",
+                    "host": "postgresql.internal.finkraftai.com",
                     "port": 5432,
                     "database": "airlines_db",
                     "user": pg_db_username,

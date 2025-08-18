@@ -123,7 +123,7 @@ afternoon_workspaces =[
   },
    {
       "uri": "https://pyt.finkraft.ai/auth/signin",
-      "workspace_name": "Blue heaven cosmetics ",
+      "workspace_name": "Blue heaven cosmetics",
       "table_name": "airline_recon_py",
       "status_column_name": "InvoiceStatus",
       "status_column_value": "Invoice Received",
@@ -209,8 +209,8 @@ def login_and_select_workspace(driver, uri, workspace_name):
     PASSWORD_TEXTBOX.send_keys(password)
     wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]'))).click()
     print("Successfully logged in...")
-    time.sleep(3)
-    max_attempts = 3
+    time.sleep(5)
+    max_attempts = 4
     for attempt in range(max_attempts):
         try:
             workspace_dropdown = wait.until(
@@ -246,7 +246,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
             if attempt < max_attempts - 1:
                 print("Retrying workspace selection...")
                 driver.refresh()
-                time.sleep(2)
+                time.sleep(5)
             else:
                 print("Max attempts reached. Raising the error.")
                 return False, partner_portal_name
@@ -543,8 +543,8 @@ def main():
         max_retries = 1  # Only retry once
         while retry_count <= max_retries:
             connection_string = (f"mongodb://{mongo_db_username}:{mongo_db_password}"
-                                 "@mongodb.centralindia.cloudapp.azure.com/admin?"
-                                 "directConnection=true&serverSelectionTimeoutMS=5000&appName=mongosh+2.2.3")
+                                 "@mongodb.internal.finkraftai.com/admin?"
+                                 "directConnection=true&serverSelectionTimeoutMS=20000&appName=mongosh+2.2.3")
             client = MongoClient(connection_string)
             db = client['gstservice']
             print(f"Starting automation for portal:{portal['uri']} and workspace:{portal['workspace_name']}")
