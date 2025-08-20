@@ -151,7 +151,7 @@ def send_email(table_data):
     for email in to_emails:
         personalization.add_to(Email(email))
     cc_emails = ["venu@kgrp.in", "tabrez@kgrp.in", "komalkant@kgrp.in", "kj@kgrp.in",
-                 "sumit@kgrp.in", "sushmitha.sonu02@gmail.com"]
+                 "sumit@kgrp.in", "sushmitha.sonu02@gmail.com","meghashyam@kgrp.in"]
     for email in cc_emails:
         personalization.add_cc(Email(email))
 
