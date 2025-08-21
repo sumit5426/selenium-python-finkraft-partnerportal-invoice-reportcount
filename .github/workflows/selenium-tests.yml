@@ -11,9 +11,9 @@ env:
   SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
 
 on:
-  schedule:
-    - cron: '30 01 * * *'  # 5:00 AM IST
-    - cron: '30 8 * * *'   # 1:00 PM IST
+#  schedule:
+#    - cron: '30 01 * * *'  # 5:00 AM IST
+#    - cron: '30 8 * * *'   # 1:00 PM IST
   workflow_dispatch:
     inputs:
       run_set:
