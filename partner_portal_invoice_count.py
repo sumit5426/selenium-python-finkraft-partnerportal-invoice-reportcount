@@ -249,8 +249,8 @@ def login_and_select_workspace(driver, uri, workspace_name):
                 time.sleep(5)
             else:
                 print("Max attempts reached. Raising the error.")
-                return False, partner_portal_name
-    return False, partner_portal_name
+                return False, partner_portal_name, str(e)
+    return False, partner_portal_name," "
 
 def capture_report_message_and_id(driver):
     print("📡 Monitoring network requests to capture the invoice report API response...")
@@ -342,7 +342,7 @@ def get_count_from_postgres(connection_params, table_name, status_column, status
                 time.sleep(retry_delay)
                 retry_delay *= 2  # Exponential backoff
             else:
-                print("Max retries reached. Could not connect to PostgreSQL.")
+                print(f"Max retries reached. Could not connect to PostgreSQL.{str(e)}")
                 result = None
         finally:
             try:
@@ -352,23 +352,24 @@ def get_count_from_postgres(connection_params, table_name, status_column, status
                     conn.close()
             except Exception as e:
                 print(f"Error closing PostgreSQL connection: {e}")
-                return result
-    return result
+                return result,str(e)
+    return result,None
 
 
-def remarks_to_mongo_db(partner_portal_name,workspace_name,db,current_timestamp,errormessage):
+def remarks_to_mongo_db(partner_portal_name,workspace_name,db,current_timestamp,error_message,ui_alert_shown_flag=True,ui_invoice_count="--"):
     error_collection = db["selenium-summary-report"]
     data_to_insert = {
         "invoice_initialization_date_time": current_timestamp,
         "portalName":partner_portal_name,
         "workspaceName":workspace_name,
-        "remark": errormessage,
-        "invoiceDownloadUIFlag": "--",
+        "remark": error_message,
+        "invoiceDownloadUIFlag":ui_alert_shown_flag,
         "invoiceReceivedBackendFlag": "--",
-        "totalFilesInUI":"--",
+        "totalFilesInUI":ui_invoice_count,
         "totalFilesInDB": "--",
         "totalFilesInZip": "--",
         "fileDifference": "--",
+        "totalTimeTaken": "--",
         "perInvoiceDownloadTimeBasedOnDB": "--",
         "perInvoiceDownloadTimeBasedOnZip": "--",
         "TestStausAsPerInvCount": "--",
@@ -377,7 +378,7 @@ def remarks_to_mongo_db(partner_portal_name,workspace_name,db,current_timestamp,
     }
     error_collection.insert_one(data_to_insert)
 
-def wait_for_report_completion(db, report_id,partner_portal_name,workspace_name,ui_invoice_count):
+def wait_for_report_completion(db, report_id,partner_portal_name,workspace_name,ui_invoice_count,ui_alert_shown_flag):
     collection = db['invoice_report']
     print(f"🔎 Searching in MongoDB for reportId: {report_id}...")
     doc = collection.find_one({"reportId": report_id})
@@ -385,7 +386,7 @@ def wait_for_report_completion(db, report_id,partner_portal_name,workspace_name,
         current_timestamp = datetime.now().strftime('%Y-%m-%d')
         formatted_created_at_time = datetime.fromtimestamp(current_timestamp).strftime('%Y-%m-%d')
         remarks_to_mongo_db(partner_portal_name, workspace_name, db, current_timestamp,
-                            "Document with reportId not found in MongoDB.")
+                            "Document with reportId not found in MongoDB.",ui_alert_shown_flag,ui_invoice_count)
         print("Document with reportId not found in MongoDB.")
         return None
     created_at = doc["createdAt"] / 1000  # Convert from milliseconds to seconds
@@ -419,7 +420,7 @@ def wait_for_report_completion(db, report_id,partner_portal_name,workspace_name,
         time.sleep(poll_interval)
 
     print("Timeout: Report did not complete in estimated minutes.")
-    remarks_to_mongo_db(partner_portal_name,workspace_name,db,formatted_created_at_time,"Report did not complete in estimated minutes.")
+    remarks_to_mongo_db(partner_portal_name,workspace_name,db,formatted_created_at_time,"Report did not complete in estimated minutes.",ui_alert_shown_flag, ui_invoice_count)
     print("❌Error Report inserted successfully into DB")
     return None
 
@@ -512,6 +513,7 @@ def download_and_verify_invoices(driver, file_hash, total_files, total_time, for
         "totalFilesInDB": total_files,
         "totalFilesInZip": downloaded_file_count,
         "fileDifference": invoice_diff,
+        "totalTimeTaken": total_time,
         "perInvoiceDownloadTimeBasedOnDB": formatted_time_perinvoicetime_DB,
         "perInvoiceDownloadTimeBasedOnZip": formatted_time_perinvoicetime_Zip,
         "TestStausAsPerInvCount": status_invoice_diff,
@@ -551,7 +553,7 @@ def main():
             download_dir = tempfile.mkdtemp(prefix="downloads_")
             driver = initialize_driver(download_dir)
             try:
-                ui_alert_shown_flag, partner_portal_name = login_and_select_workspace(
+                ui_alert_shown_flag, partner_portal_name, exception_detail = login_and_select_workspace(
                     driver,
                     portal["uri"],
                     portal["workspace_name"]
@@ -561,7 +563,7 @@ def main():
                     print("Workspace selection failed after all retries. Moving to next portal.")
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        "Workspace selection failed after two times retry attempts")
+                                        f"Workspace selection failed after four times retry attempts with exception : {exception_detail} ",ui_alert_shown_flag)
                     break
 
                 report_id = capture_report_message_and_id(driver)
@@ -569,7 +571,7 @@ def main():
                     print(f"Workspace  {portal['workspace_name']} already has a report for today, skipping.")
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        " already has a report for today, skipping.")
+                                        " already has a report for today, skipping.",ui_alert_shown_flag)
                     break
                 if report_id is None:
                     # Log error to MongoDB and skip to next portal if report_id is not found
@@ -579,7 +581,7 @@ def main():
                         retry_count += 1
                         continue
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        " Report ID not captured.")
+                                        " Report ID not captured.",ui_alert_shown_flag)
                     break
 
                 pg_connection_params = {
@@ -594,7 +596,7 @@ def main():
                 status_value = portal['status_column_value']
                 workspace_name = portal['db_workspace_name']
 
-                ui_invoice_count = get_count_from_postgres(
+                ui_invoice_count,exception_det = get_count_from_postgres(
                     pg_connection_params,
                     table_name,
                     status_column,
@@ -606,11 +608,11 @@ def main():
                     print("❌ Failed to get invoice count from PostgreSQL. Skipping further processing.")
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        "Failed to get invoice count from PostgreSQL")
+                                        f"Failed to get invoice count from PostgreSQL with exception {exception_det}",ui_alert_shown_flag)
                     break
 
                 report_info = wait_for_report_completion(db, report_id, partner_portal_name,
-                                                         portal["workspace_name"], ui_invoice_count)
+                                                         portal["workspace_name"], ui_invoice_count,ui_alert_shown_flag)
 
                 if report_info is None:
                     break
@@ -631,7 +633,7 @@ def main():
                         continue
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        error_message)
+                                        error_message,ui_alert_shown_flag,ui_invoice_count)
                     break
 
             except Exception as e:

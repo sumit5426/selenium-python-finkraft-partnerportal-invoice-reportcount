@@ -226,7 +226,7 @@ def login_and_select_workspace(driver, uri, workspace_name):
                 time.sleep(2)
             else:
                 print(f"Max attempts reached. Raising the error")
-                return False, partner_portal_name, None, f"Workspace selection failed"
+                return False, partner_portal_name, None, f"Workspace selection failed with exception: {str(e)} "
 
     return False, partner_portal_name, None, "Workspace selection failed after all retries"
 
@@ -297,16 +297,16 @@ def get_row_column_count_from_postgres(connection_params, table_name, workspace_
     return result
 
 
-def remarks_to_mongo_db(partner_portal_name, workspace_name, db, current_timestamp, errormessage):
+def remarks_to_mongo_db(partner_portal_name, workspace_name, db, current_timestamp, error_message,ui_alert_shown_flag=False,rows_count_ui="--",cols_count_ui="--"):
     error_collection = db["selenium-summary-excel-report"]
     data_to_insert = {
         "portalName": partner_portal_name,
         "workspaceName": workspace_name,
         "report_initialization_date_time": current_timestamp,
-        "reportDownloadUIFlag": "--",
+        "reportDownloadUIFlag":ui_alert_shown_flag,
         "reportReceivedBackendFlag": "--",
-        "totalColumnsInUI": "--",
-        "totalRowsInUI": "--",
+        "totalColumnsInUI":rows_count_ui,
+        "totalRowsInUI": cols_count_ui,
         "totalRowsInDB": "--",
         "totalRowsInExcel": "--",
         "totalColumnsInExcel": "--",
@@ -314,7 +314,7 @@ def remarks_to_mongo_db(partner_portal_name, workspace_name, db, current_timesta
         "totalTime": "--",
         "testStatusWrtTime": "--",
         "testStatusWrtRow": "--",
-        "remark": errormessage,
+        "remark": error_message,
         "runId":run_id
     }
     error_collection.insert_one(data_to_insert)
@@ -500,7 +500,7 @@ def main():
                     print("Workspace selection failed after all retries. Moving to next portal.")
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        error_message)
+                                        error_message,ui_alert_shown_flag)
                     break
 
                 pg_connection_params = {
@@ -522,7 +522,7 @@ def main():
                     print("❌ Failed to get row and column count from PostgreSQL. Skipping further processing.")
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        "Failed to get row and column count from PostgreSQL")
+                                        "Failed to get row and column count from PostgreSQL",ui_alert_shown_flag,str(row_count),str(col_count))
                     break
 
                 report_info = wait_for_report_completion(db, report_name, partner_portal_name,
@@ -535,19 +535,19 @@ def main():
                         continue
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        "Report not found in MongoDB after retry")
+                                        "Report not found in MongoDB after retry",ui_alert_shown_flag,str(row_count),str(col_count))
                     break
                 elif report_info == "TIMEOUT":
                     print("Report did not complete within 30 minutes. Moving to next portal.")
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        "Report did not complete within 30 minutes")
+                                        "Report did not complete within 30 minutes",ui_alert_shown_flag,str(row_count),str(col_count))
                     break  # No retry for timeout, move to next portal
                 elif report_info is None:
                     print("Unexpected error in report completion. Moving to next portal.")
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        "Unexpected error in report completion")
+                                        "Unexpected error in report completion",ui_alert_shown_flag,str(row_count),str(col_count))
                     break
 
                 download_success, error_message = download_and_verify_invoices(
@@ -569,7 +569,7 @@ def main():
                         continue
                     current_timestamp = datetime.now().strftime('%Y-%m-%d')
                     remarks_to_mongo_db(partner_portal_name, portal['workspace_name'], db, current_timestamp,
-                                        error_message)
+                                        error_message,ui_alert_shown_flag,str(row_count),str(col_count))
                     break
 
             except Exception as e:
